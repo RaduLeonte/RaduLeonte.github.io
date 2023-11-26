@@ -1245,14 +1245,12 @@ function sortBySpan(dict) {
     entries.sort((a, b) => {
         const spanListA = removeNonNumeric(a[1][valueKey]);
         const rangeA = spanListA.split("..").map(Number);
-        const rangeStartA = rangeA[0];
+        const rangeStartA = Math.min(rangeA[0], rangeA[1]);
 
         const spanListB = removeNonNumeric(b[1][valueKey]);
         const rangeB = spanListB.split("..").map(Number);
-        const rangeStartB = rangeB[0];
+        const rangeStartB = Math.min(rangeB[0], rangeB[1]);
 
-        //const aValue = Number(a[1][valueKey].split('..')[0]);
-        //const bValue = Number(b[1][valueKey].split('..')[0]);
         return rangeStartA - rangeStartB;
     });
 

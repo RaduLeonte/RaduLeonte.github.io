@@ -293,7 +293,7 @@ nav ul li a {
   .sequence-grid {
     z-index: 1;
     table-layout: fixed;
-    width: 100%;
+    /*width: 100%;*/
     border-collapse: collapse;
   }
   

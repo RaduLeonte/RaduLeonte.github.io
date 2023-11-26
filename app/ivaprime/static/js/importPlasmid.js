@@ -1191,88 +1191,62 @@ function removeNonNumeric(inputString) {
  * Check the annotation overlap to see how many rows are needed to accomodate all the annotations.
  * Also changes the gridstructure if more rows are needed for annotations.
  */
-function checkAnnotationOverlap(inputFeatures, pNr) {
-  console.log("Grid structures before:", gridStructure);
-  let maximumOverlap = 0;
-  
+function checkAnnotationOverlap(inputFeatures, inputSequence, inputGridStructure, pNr) {
   // Iterate over all features and add their spans to a list
-  const spansList = [];
+  
+  let tableAnalog = [[]];
+  for (let i = 0; i < inputSequence.length; i++) {tableAnalog[0].push(false);}
+  let outputFeatureRowDict = {};
   Object.entries(inputFeatures).forEach(([key, value]) => {
+    let currentRow = 0;
     if (value.span && !key.includes("source")) { // Exclude source
-
-      // Get the current span and push it to the spans list
-      const spanList = removeNonNumeric(value.span);
-      const range = spanList.split("..").map(Number);
-      const rangeStart = range[0];
-      const rangeEnd = range[1];
-      spansList.push([rangeStart, rangeEnd])
-    };
-  });
-
-  // Check each span against the rest
-  for (let i = 0; i < spansList.length; i++) {
-    // Get the i-th span
-    const [startA, endA] = spansList[i];
-    let currentOverlap = 0;
-    // Check against every other span to see how many it overlaps
-    for (let j = 0; j < spansList.length; j++) {
-      if (i !== j) { // Excludes itself
-        const [startB, endB] = spansList[j]; // Overlap to cehck against
-        
-        // Increment the current overlap if they do overlap
-        if (startA >= startB && startA <= endB) {
-          console.log("++")
-          currentOverlap++;
-        } else if (endA >= startB && endA <= endB) {
-          console.log("++")
-          currentOverlap++;
+      const [spanStart, spanEnd] = removeNonNumeric(value.span).split("..").map(Number);
+      console.log("checkAnnotationOverlap", spanStart, spanEnd, Math.min(spanStart, spanEnd) - 1, Math.max(spanStart, spanEnd))
+      console.log(tableAnalog[currentRow].slice(Math.min(spanStart, spanEnd) - 1, Math.max(spanStart, spanEnd)))
+      while (tableAnalog[currentRow].slice(Math.min(spanStart, spanEnd) - 1, Math.max(spanStart, spanEnd)).includes(true)) {
+        console.log(tableAnalog[currentRow].slice(Math.min(spanStart, spanEnd) - 1, Math.max(spanStart, spanEnd)))
+        currentRow++;
+        if (typeof tableAnalog[currentRow] === 'undefined') {
+          tableAnalog.push([])
+          for (let k = 0; k < inputSequence.length; k++) {tableAnalog[currentRow].push(false);}
         };
       };
+      console.log("checkAnnotationOverlap", key, [spanStart, spanEnd], currentRow, tableAnalog)
+      for (let j = Math.min(spanStart, spanEnd) - 1; j < Math.max(spanStart, spanEnd); j++) {
+        tableAnalog[currentRow][j] = true;
+      };
+      outputFeatureRowDict[key] = currentRow;
     };
-
-    // IF a new maximum overlap was found, replace the previous one
-    if (currentOverlap > maximumOverlap) {
-      maximumOverlap = currentOverlap;
-    };
-  };
-  // Increase once more for good measure
-  maximumOverlap++;
+  });
+  // Get the maximum value to find the maximum overlap
+  let maximumOverlap = tableAnalog.length;
+  console.log("checkAnnotationOverlap - maximumOverlap:", maximumOverlap)
 
   // Adjust the grid structure according to maximumOverlap
   let count = 0;
-  let listInsertPos = 0;
-  if (pNr === 1) { // First plasmid
-    // Count how many rows are already dedicated to annotations
-    for (let i = 0; i < gridStructure.length; i++) {
-      if (gridStructure[i] === "Annotations") {
-        count++;
-      };
-    };
-    
-    listInsertPos = gridStructure.indexOf("Annotations");
-    // If more rows are needed, append them
-    if (count !== maximumOverlap) {
-      for (let i = 0; i < maximumOverlap - count; i++) {
-        gridStructure.splice(listInsertPos, 0 , "Annotations")
-        console.log("Grid structures:", i, gridStructure);
-      };
-    };
-  } else { // Same as for the first plasmid
-    for (let i = 0; i < gridStructure2.length; i++) {
-      if (gridStructure2[i] === "Annotations") {
-        count++;
-      };
-    };
-    
-    listInsertPos = gridStructure.indexOf("Annotations");
-    if (count !== maximumOverlap) {
-      for (let i = 0; i < maximumOverlap - count; i++) {
-        gridStructure2.splice(listInsertPos, 0 , "Annotations")
-      };
+  // Count how many rows are already dedicated to annotations
+  for (let i = 0; i < inputGridStructure.length; i++) {
+    if (inputGridStructure[i] === "Annotations") {
+      count++;
     };
   };
-  console.log("Grid structures after:", gridStructure, listInsertPos, maximumOverlap);
-  return;
+
+  // Make a list of entries to add to the grid structure
+  let newGridStructureEntries = [];
+  for (let i = 0; i < maximumOverlap - count; i++) {
+    newGridStructureEntries.push("Annotations")
+  };
+
+  // Get index for insertion
+  let listInsertPos = inputGridStructure.indexOf("Annotations");
+  // Insert new entries
+  if (pNr === 1) { // First plasmid
+    gridStructure.splice(listInsertPos, 0 , ...newGridStructureEntries)
+  } else { // Same as for the second plasmid
+    gridStructure2.splice(listInsertPos, 0 , ...newGridStructureEntries)
+  };
+
+  return [outputFeatureRowDict, maximumOverlap];
 };
 
 
@@ -1283,61 +1257,46 @@ function makeContentGrid(pNr, callback) {
 
   setTimeout(function() {
     // Init variables
-    let currSequence = null;
-    let currComplementarySequence = null;
-    let currFeatures = null;
-    let sequenceGrid = null;
-    let gridHeight = 0;
-    let currGridStructure = null;
-    // Assign variables from the specified plasmid
-    if (pNr === 1) {
-      currSequence = sequence;
-      currComplementarySequence = complementaryStrand;
-      currFeatures = features;
-      sequenceGrid = document.getElementById('sequence-grid');
-      currGridStructure = gridStructure;
-    } else {
-      currSequence = sequence2;
-      currComplementarySequence = complementaryStrand2;
-      currFeatures = features2;
-      sequenceGrid = document.getElementById('sequence-grid2');
-      currGridStructure = gridStructure2;
-    };
+    let currSequence = (pNr === 1) ? sequence: sequence2;
+    let currComplementarySequence = (pNr === 1) ? complementaryStrand: complementaryStrand2;
+    let currFeatures = (pNr === 1) ? sortBySpan(features): sortBySpan(features2);
+    let sequenceGrid = (pNr === 1) ? document.getElementById('sequence-grid'): document.getElementById('sequence-grid2');
+    let currGridStructure = (pNr === 1) ? gridStructure: gridStructure2;
 
+    
     // Check the annotation overlap to see if the grid structure has enough "Annotations" rows
-    checkAnnotationOverlap(currFeatures, pNr);
-
+    const [featureRowDict, maximumOverlap] = checkAnnotationOverlap(currFeatures, currSequence, currGridStructure, pNr);
+    console.log("makeContentGrid - featureRowDict:", featureRowDict)
     // Create the grid
     let currGridStructureLength = currGridStructure.length; // How many rows per line 
     // Sequence length / gridWidth rounded up to the nearest multiple to see how many lines are needed
     // Multiply with the amount of rows per line to get the total amount of table rows
-    gridHeight = Math.ceil(currSequence.length / gridWidth) * currGridStructureLength;
+    const gridHeight = Math.ceil(currSequence.length / gridWidth) * currGridStructureLength;
 
     // Clear previous grid contents
     sequenceGrid.innerHTML = '';
     // Iterate over each row 
-    for (let i = 0; i < gridHeight; i++) {
+    for (let i = 0; i < currGridStructureLength; i++) {
       let row = sequenceGrid.rows[i]; // Get the corresponding row$
       // If the row doesn't exist, create a new one
       if (!row) {
         row = sequenceGrid.insertRow(i);
-      } ;
+      };
       row.id = currGridStructure[i % currGridStructureLength] + "-row";
+
       // Populate the sequence cells with the corresponding base
-      for (let j = 0; j < gridWidth; j++) {
+      for (let j = 0; j < currSequence.length; j++) {
         const cell = document.createElement('td'); // Create the cell
+        
         let currentChar = ""
         let linesCreated = Math.floor(i / currGridStructureLength) // Check how many "lines" have been created so far
-  
         if ((i + 1) % currGridStructureLength === 1) { // If we're on the forward strand
           currentChar = currSequence[linesCreated*gridWidth + j] // Add the corrseponding char
         } else if ((i + 1) % currGridStructureLength === 2) {// If we're on the comlpementary strand
           currentChar = currComplementarySequence[linesCreated*gridWidth + j]
         };
         // If we've run out of bases to add add nothing
-        if (!currentChar) {
-          currentChar = ""
-        };
+        if (!currentChar) {currentChar = ""};
 
         // Insert the base to the cell's text content
         cell.textContent = currentChar;
@@ -1345,10 +1304,7 @@ function makeContentGrid(pNr, callback) {
         cell.id = currGridStructure[i % currGridStructureLength];
         // Add a cell class
         cell.classList.add(currGridStructure[i % currGridStructureLength].replace(" ", ""));
-        if (cell.id === "Forward Strand" && currentChar !== "") {
-          cell.classList.add("forward-strand-base");
-        };
-
+        if (cell.id === "Forward Strand" && currentChar !== "") {cell.classList.add("forward-strand-base");};
         // Append the cell to the row
         row.appendChild(cell);
       };
@@ -1360,104 +1316,117 @@ function makeContentGrid(pNr, callback) {
     
     // Iterate over the features and create the annotatations
     //console.log("Here6", currFeatures)
+    let shiftedColumnsTracker = {};
+    for (let i = 0; i < maximumOverlap; i++) {
+      shiftedColumnsTracker[i] = 0;
+    };
     Object.entries(currFeatures).forEach(([key, value]) => {
       if (value.span && !key.includes("source")) { // If the feature includes a span and is not "source"
         // Get the current feature's span
         const direction = (value.span.includes("complement")) ? "left": "right";
         const spanList = removeNonNumeric(value.span);
-        const range = spanList.split("..").map(Number);
-        const rangeStart = range[0];
-        const rangeEnd = range[1];
+        const [rangeStart, rangeEnd] = spanList.split("..").map(Number);
         const annotText = (value.label) ? value.label: key;
         const annotationColor = generateRandomUniqueColor();
         if (!value["color"]) {
           value["color"] = annotationColor;
         };
         recentColor = annotationColor; // Store the colour history
-        console.log(annotText, rangeStart + ".." + rangeEnd)
+
+    
         // Make the annotation at the specified indices
-        makeAnnotation(rangeStart - 1, rangeEnd - 1, annotText, key, annotationColor, pNr, currGridStructure);
-
-  
-        const triangleID = key;
-        const table = (pNr === 1) ? document.getElementById("sequence-grid"): document.getElementById("sequence-grid2");
-        const featureCells = [];
-        for (let rowIdx = 0; rowIdx < table.rows.length; rowIdx++) {
-          for (let colIdx = 0; colIdx < table.rows[rowIdx].cells.length; colIdx++) {
-              const cell = table.rows[rowIdx].cells[colIdx];
-              const featureId = cell.getAttribute("feature-id");
-      
-              // Check if the cell has the attribute "feature-id" with the value "terminator"
-              if (featureId === triangleID) {
-                featureCells.push({ row: rowIdx, col: colIdx });
-              };
-          };
-        } ;
-        console.log("Triangles, found cells:", featureCells)
-
-        if (featureCells.length > 0) {
-          let lowestCell = featureCells[0];
-          let highestCell = featureCells[0];
-      
-          for (const cell of featureCells) {
-              if (cell.row < lowestCell.row || (cell.row === lowestCell.row && cell.col < lowestCell.col)) {
-                  lowestCell = cell;
-              };
-              if (cell.row > highestCell.row || (cell.row === highestCell.row && cell.col > highestCell.col)) {
-                  highestCell = cell;
-              };
-          };
-      
-          console.log("Triangles, Top-left cell:", lowestCell);
-          console.log("Triangles, Bottom-right cell:", highestCell);
-          console.log("Triangles:", direction)
-
-          if (direction === "left") {
-            const targetRow = table.rows[lowestCell.row];
-            const targetCell = targetRow.cells[lowestCell.col];
-            console.log("Triangles, target cell:", targetRow, targetCell)
-            const newCell = document.createElement("td");
-            // Copy attributes from targetCell to newCell
-            newCell.id = targetCell.id;
-            newCell.class = targetCell.class;
-            newCell["feature-id"] = targetCell["feature-id"];
-            // Append the new cell right before the target cell
-            targetRow.insertBefore(newCell, targetCell);
-
-            if (targetCell.colSpan > 1) {
-              targetCell.colSpan--;
-            } else {
-              targetRow.removeChild(targetCell);
-            };
-            createFilledTriangle(key, annotationColor, "left", lowestCell.row, lowestCell.col, pNr);
-          } else {
-            const targetRow = table.rows[highestCell.row];
-            const targetCell = targetRow.cells[highestCell.col];
-            console.log("Triangles, target cell:", targetRow, targetCell)
-            const newCell = document.createElement("td");
-            // Copy attributes from targetCell to newCell
-            newCell.id = targetCell.id;
-            newCell.class = targetCell.class;
-            newCell["feature-id"] = targetCell["feature-id"];
-            // Append the new cell right before the target cell
-            targetRow.parentNode.insertBefore(newCell, targetRow.nextSibling);
-
-            if (targetCell.colSpan > 1) {
-              targetCell.colSpan--;
-            } else {
-              targetRow.removeChild(targetCell);
-            };
-            createFilledTriangle(key, annotationColor, "right", highestCell.row, highestCell.col + 1, pNr);
-          };
+        const featureRow = featureRowDict[key];
+        const annotationSpan = Math.abs(rangeEnd - rangeStart) + 1;
+        const colShift = shiftedColumnsTracker[featureRowDict[key]];
+        const colStart = Math.min(rangeStart, rangeEnd) - colShift
+        console.log("makeContentGrid", annotText, featureRow, colStart, annotationSpan, colShift, shiftedColumnsTracker)
+        shiftedColumnsTracker[featureRowDict[key]]+= annotationSpan - 1;
+        let carryOver = annotationSpan;
+        while (carryOver > 0) {
+          makeAnnotation(featureRow, colStart, annotationSpan, annotText, key, annotationColor, currGridStructure, pNr);
         };
-
+        
+        
+  
+        //const triangleID = key;
+        //const table = (pNr === 1) ? document.getElementById("sequence-grid"): document.getElementById("sequence-grid2");
+        //const featureCells = [];
+        //for (let rowIdx = 0; rowIdx < table.rows.length; rowIdx++) {
+        //  for (let colIdx = 0; colIdx < table.rows[rowIdx].cells.length; colIdx++) {
+        //      const cell = table.rows[rowIdx].cells[colIdx];
+        //      const featureId = cell.getAttribute("feature-id");
+        //
+        //      // Check if the cell has the attribute "feature-id" with the value "terminator"
+        //      if (featureId === triangleID) {
+        //        featureCells.push({ row: rowIdx, col: colIdx });
+        //      };
+        //  };
+        //} ;
+        //console.log("Triangles, found cells:", featureCells)
+        //
+        //if (featureCells.length > 0) {
+        //  let lowestCell = featureCells[0];
+        //  let highestCell = featureCells[0];
+        //
+        //  for (const cell of featureCells) {
+        //      if (cell.row < lowestCell.row || (cell.row === lowestCell.row && cell.col < lowestCell.col)) {
+        //          lowestCell = cell;
+        //      };
+        //      if (cell.row > highestCell.row || (cell.row === highestCell.row && cell.col > highestCell.col)) {
+        //          highestCell = cell;
+        //      };
+        //  };
+        //
+        //  console.log("Triangles, Top-left cell:", lowestCell);
+        //  console.log("Triangles, Bottom-right cell:", highestCell);
+        //  console.log("Triangles:", direction)
+        //
+        //  if (direction === "left") {
+        //    const targetRow = table.rows[lowestCell.row];
+        //    const targetCell = targetRow.cells[lowestCell.col];
+        //    console.log("Triangles, target cell:", targetRow, targetCell)
+        //    const newCell = document.createElement("td");
+        //    // Copy attributes from targetCell to newCell
+        //    newCell.id = targetCell.id;
+        //    newCell.class = targetCell.class;
+        //    newCell["feature-id"] = targetCell["feature-id"];
+        //    // Append the new cell right before the target cell
+        //    targetRow.insertBefore(newCell, targetCell);
+        //
+        //    if (targetCell.colSpan > 1) {
+        //      targetCell.colSpan--;
+        //    } else {
+        //      targetRow.removeChild(targetCell);
+        //    };
+        //    createFilledTriangle(key, annotationColor, "left", lowestCell.row, lowestCell.col, pNr);
+        //  } else {
+        //    const targetRow = table.rows[highestCell.row];
+        //    const targetCell = targetRow.cells[highestCell.col];
+        //    console.log("Triangles, target cell:", targetRow, targetCell)
+        //    const newCell = document.createElement("td");
+        //    // Copy attributes from targetCell to newCell
+        //    newCell.id = targetCell.id;
+        //    newCell.class = targetCell.class;
+        //    newCell["feature-id"] = targetCell["feature-id"];
+        //    // Append the new cell right before the target cell
+        //    targetRow.parentNode.insertBefore(newCell, targetRow.nextSibling);
+        //
+        //    if (targetCell.colSpan > 1) {
+        //      targetCell.colSpan--;
+        //    } else {
+        //      targetRow.removeChild(targetCell);
+        //    };
+        //    createFilledTriangle(key, annotationColor, "right", highestCell.row, highestCell.col + 1, pNr);
+        //  };
+        //};
+        //
         // Check if feature needs to be translated
         //console.log(currFeatures[key]);
-        if ((currFeatures[key]["translation"]) || (currFeatures[key]["note"] && (currFeatures[key]["note"].includes(" translation: ")))) {
-          //console.log("Translating: ", value.label, rangeStart, rangeEnd, pNr)
-          const targetStrand = (!value.span.includes("complement")) ? "fwd": "comp";
-          translateSpan(targetStrand, rangeStart, rangeEnd, pNr);
-        };
+        //if ((currFeatures[key]["translation"]) || (currFeatures[key]["note"] && (currFeatures[key]["note"].includes(" translation: ")))) {
+        //  //console.log("Translating: ", value.label, rangeStart, rangeEnd, pNr)
+        //  const targetStrand = (!value.span.includes("complement")) ? "fwd": "comp";
+        //  translateSpan(targetStrand, rangeStart, rangeEnd, pNr);
+        //};
       };
     });
 
@@ -1491,197 +1460,31 @@ function makeContentGrid(pNr, callback) {
  * - at the moment it is very slow, maybe find a better way
  * - !!find a way to make this rescale on window resize
  */
-function makeAnnotation(rStart, rEnd, text, featureId, annotationColor, pNr, currGridStructure) {
-
-  // Convert from sequence coords to table coords
-  let row = (Math.floor(rStart / gridWidth)) * currGridStructure.length;
-  let col = rStart - (row/currGridStructure.length)*gridWidth;
-  row += currGridStructure.indexOf("Annotations");
-  console.log("here", text, rStart, row, currGridStructure.length, gridWidth, col)
-
-
-  // Annotaiton span length
-  const annotationSpan = rEnd - rStart + 1;
-  let currentSpan = annotationSpan; // Current span to draw
-  let carryOver = annotationSpan; // Carry over for next line
+function makeAnnotation(targetRow, startCell, annotationSpan, annotationDisplayName, featureId, annotationColor, currGridStructure, pNr) {
+  console.log("makeAnnotation", targetRow, startCell, annotationSpan, annotationDisplayName, featureId, annotationColor, currGridStructure, pNr)
   
-  let i = 0; // Iteration counter
-  // Draw until there is no more carry over
-  while (carryOver > 0) {
-    // If the feature spans multiple lines, add "..." to the beginning of the feature
-    if (i != 0) {
-        text = "..." + text.replace("...", "");
-    };
+  const row = currGridStructure.indexOf("Annotations") + targetRow;
+  const col = startCell - 1;
 
-    // Merge the corresponding cells to draw the annoation
-    console.log("MA0:", text, col, currentSpan, gridWidth)
-    if (col + currentSpan >= gridWidth) {
-      // If the currenspan would not fit on the line, draw it until we reach the end and
-      // put the rest into carry over
-      console.log("MA1:", text, row, col, 1, currentSpan, featureId, annotationColor, pNr,currGridStructure);
-      // Calculate carry over
-      carryOver = col + currentSpan - gridWidth;
-      // Calculate length of the current annoation
-      currentSpan = gridWidth - col;
-      // Merge the corresponding cells and create the annotaion
-      mergeCells(row, col, 1, currentSpan, text + "...", featureId, annotationColor, pNr,currGridStructure);
-      // Adjust the current span
-      currentSpan = carryOver;
-      // Increment the row
-      row = row + currGridStructure.length;
-      // Reset cell index
-      col = 0;
-    } else if (currentSpan === gridWidth) {
-      // If the currentspan covers exactly the current line there is some weird behaviour
-      // so fill in the current line and one additional cell in the the following row
-      console.log("MA2:", text, row, col, 1, currentSpan, featureId, annotationColor, pNr,currGridStructure);
-      mergeCells(row, col, 1, currentSpan, text, featureId, annotationColor, pNr,currGridStructure);
-      mergeCells(row + currGridStructure.length, col, 1, 1, text, featureId, annotationColor, pNr,currGridStructure);
-      // Set carry over to 0 to signify that we're done
-      carryOver = 0;
-    } else {
-      // The annotation can be fully drawn on the current row
-      console.log("MA3:", text, row, col, 1, currentSpan, featureId, annotationColor, pNr,currGridStructure);
-      mergeCells(row, col, 1, currentSpan, text, featureId, annotationColor, pNr, currGridStructure);
-      // Set carry over to 0 to signify that we're done
-      carryOver = 0;
-    };
-    // Increment iteration counter
-    i++;
-  };
-};
-
-
-/**
- * Draws the annotation by merging the specified cells, adding th text and adding the color.
- * 
- */
-function mergeCells(row, col, rowspan, colspan, text, featureId, color, pNr, currGridStructure) {
-  console.log("Merge cells1: ", row, col, colspan, text)
   // Check which grid were doing
-  let table = null;
-  if (pNr === 1){
-    table = document.getElementById('sequence-grid');
-  } else {
-    table = document.getElementById('sequence-grid2');
-  };
-
-  // Adjust row and col
-  let occupiedCellsList = [];
-  let occupiedCellsCounter = 0;
-  for (let i = 0; i < currGridStructure.length; i++) {
-    if (currGridStructure[i] === "Annotations") {
-      // Find already occupied cells
-      occupiedCellsList = [];
-      occupiedCellsCounter = 0;
-      for (let i = 0; i < table.rows[row].cells.length; i++) {
-        if (table.rows[row].cells[i].attributes.hasOwnProperty('colspan')) {
-          let currColSpan = parseInt(table.rows[row].cells[i].attributes["colspan"].value);
-          console.log("Colspan ", currColSpan);
-          occupiedCellsCounter++;
-          for (let i = 0; i <  currColSpan; i++) {
-            occupiedCellsList.push(true);
-          };
-        } else {
-          occupiedCellsList.push(false);
-        };
-      };
-      
-      console.log(col, col+colspan-1, row, occupiedCellsList);
-      if (occupiedCellsList.slice(col, col + colspan - 1).every(value => value !== true)) {
-        console.log("Go right ahead sir.")
-        break;
-      } else {
-        console.log("Try next row.")
-        row++;
-      };
-    };
-  };
-  
-  let nrOccupiedCells = occupiedCellsList.slice(0, col).filter(value => value === true).length;
-  console.log("nrOccupiedCells ", nrOccupiedCells, occupiedCellsList.slice(0, col))
-  console.log("Merge cells1.5 : ", row, col, colspan, text)
-  console.log("Zamboni", nrOccupiedCells, occupiedCellsList.length)
-  if (nrOccupiedCells === occupiedCellsList.length-1){
-    row++;
-  };
-
-  // Adjust row and col
-  occupiedCellsList = [];
-  occupiedCellsCounter = 0;
-  for (let i = 0; i < currGridStructure.length; i++) {
-    if (currGridStructure[i] === "Annotations") {
-      // Find already occupied cells
-      occupiedCellsList = [];
-      occupiedCellsCounter = 0;
-      for (let i = 0; i < table.rows[row].cells.length; i++) {
-        if (table.rows[row].cells[i].attributes.hasOwnProperty('colspan')) {
-          let currColSpan = parseInt(table.rows[row].cells[i].attributes["colspan"].value);
-          console.log("Colspan ", currColSpan);
-          occupiedCellsCounter++;
-          for (let i = 0; i <  currColSpan; i++) {
-            occupiedCellsList.push(true);
-          };
-        } else {
-          occupiedCellsList.push(false);
-        };
-      };
-      
-      console.log(col, col+colspan-1, row, occupiedCellsList);
-      if (occupiedCellsList.slice(col, col + colspan - 1).every(value => value !== true)) {
-        console.log("Go right ahead sir.")
-        break;
-      } else {
-        console.log("Try next row.")
-        row++;
-      };
-    };
-  };
-
-  nrOccupiedCells = occupiedCellsList.slice(0, col).filter(value => value === true).length;
-  console.log("nrOccupiedCells2 ", nrOccupiedCells, occupiedCellsList.slice(0, col))
-  console.log("Merge cells1.5.2 : ", row, col, colspan, text)
-
-
-  if (nrOccupiedCells !== 0) {
-    col -= nrOccupiedCells;
-    col += occupiedCellsCounter;
-  };
-  console.log("Merge cells2: ", row, col, colspan, text)
+  let table = (pNr === 1) ? document.getElementById('sequence-grid'): document.getElementById('sequence-grid2');
   let mainCell = table.rows[row].cells[col];
-  mainCell.rowSpan = rowspan;
-  mainCell.colSpan = colspan;
+  console.log("makeAnnotation - mainCell:", mainCell)
+  if (featureId !== ""){
+  mainCell.rowSpan = 1;
+  mainCell.colSpan = annotationSpan;
   mainCell.classList.add("editable")
-  mainCell.style.backgroundColor = color;
-  // Add text to the center of the merged cell
-  if (text.length > colspan)  {
-    if (colspan <= 3) {
-      text = "";
-      for (let l = 0; l < colspan; l++) {
-        text += ".";
-      };
-    } else {
-      text = text.slice(0, colspan - 3).replace(/\./g, "") + "...";
-    };
-  };
-  const textNode = document.createTextNode(text);
-  mainCell.appendChild(textNode);
   mainCell.style.textAlign = 'center';
   mainCell.setAttribute("feature-id", featureId)
+  mainCell.style.backgroundColor = annotationColor;
+  mainCell.appendChild(document.createTextNode(annotationDisplayName));
 
   // Remove extra cells
-  let k = 0;
-  colspan--;
-  //console.log("Merge cells, to delete: ", row, col, colspan, table.rows[row].cells.length);
-  for (let j = col + 1; j < col + colspan; j++) {
-    const cell = table.rows[row].cells[j - k];
-    if (cell) {
-      //console.log("Merge cells, deleting: ", row, j-k, table.rows[row].cells.length)
-      cell.parentNode.removeChild(cell);
-    };
-    k++;
-  };
-  //console.log("Merge cells, after del: ",table.rows[row].cells.length)
+  console.log("mergeCells - to delete: ", row, col+1, annotationSpan);
+  for (let j = 0; j < annotationSpan; j++) {
+    const cell = table.rows[row].cells[col + 1];
+    cell.parentNode.removeChild(cell);
+  };}
 };
 
 
